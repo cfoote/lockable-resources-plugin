@@ -12,23 +12,21 @@ import hudson.Extension;
 import hudson.Util;
 import hudson.model.AbstractProject;
 import hudson.model.AutoCompletionCandidates;
+import hudson.model.Job;
 import hudson.model.JobProperty;
 import hudson.model.JobPropertyDescriptor;
-import hudson.model.Job;
 import hudson.util.FormValidation;
-
 import java.util.ArrayList;
 import java.util.List;
-
+import javax.annotation.CheckForNull;
 import net.sf.json.JSONObject;
-
+import org.jenkins.plugins.lockableresources.queue.Utils;
 import org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript;
 import org.jenkinsci.plugins.scriptsecurity.scripts.ApprovalContext;
+import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
-
-import javax.annotation.CheckForNull;
 
 public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 
@@ -43,36 +41,26 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 			String resourceNamesVar, String resourceNumber,
 			String labelName, @CheckForNull SecureGroovyScript resourceMatchScript) {
 		super();
-		
-		if (resourceNames == null || resourceNames.trim().isEmpty()) {
-			this.resourceNames = null;
-		} else {
-			this.resourceNames = resourceNames.trim();
-		}
-		if (resourceNamesVar == null || resourceNamesVar.trim().isEmpty()) {
-			this.resourceNamesVar = null;
-		} else {
-			this.resourceNamesVar = resourceNamesVar.trim();
-		}
-		if (resourceNumber == null || resourceNumber.trim().isEmpty()) {
-			this.resourceNumber = null;
-		} else {
-			this.resourceNumber = resourceNumber.trim();
-		}
-		String labelNamePreparation = (labelName == null || labelName.trim().isEmpty()) ? null : labelName.trim();
+
+		this.resourceNames = Util.fixEmptyAndTrim(resourceNames);
+		this.resourceNamesVar = Util.fixEmptyAndTrim(resourceNamesVar);
+		this.resourceNumber = Util.fixEmptyAndTrim(resourceNumber);
 		if (resourceMatchScript != null) {
 			this.resourceMatchScript = resourceMatchScript.configuringWithKeyItem();
-			this.labelName = labelNamePreparation;
+			this.labelName = Util.fixEmptyAndTrim(labelName);
 		} else if (labelName != null && labelName.startsWith(LockableResource.GROOVY_LABEL_MARKER)) {
 			this.resourceMatchScript = new SecureGroovyScript(labelName.substring(LockableResource.GROOVY_LABEL_MARKER.length()),
 					false, null).configuring(ApprovalContext.create());
 			this.labelName = null;
 		} else {
 			this.resourceMatchScript = null;
-			this.labelName = labelNamePreparation;
+			this.labelName = Util.fixEmptyAndTrim(labelName);
 		}
 	}
 
+  /**
+   * @deprecated groovy script was added (since 2.0)
+   */
 	@Deprecated
 	public RequiredResourcesProperty(String resourceNames,
 									 String resourceNamesVar, String resourceNumber,
@@ -118,7 +106,7 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 	/**
 	 * Gets a system Groovy script to be executed in order to determine if the {@link LockableResource} matches the condition.
 	 * @return System Groovy Script if defined
-	 * @since TODO
+	 * @since 2.0
 	 * @see LockableResource#scriptMatches(org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript, java.util.Map)
 	 */
 	@CheckForNull
@@ -149,7 +137,8 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 
 		public FormValidation doCheckResourceNames(@QueryParameter String value,
 												   @QueryParameter String labelName,
-												   @QueryParameter boolean script) {
+                                                   @QueryParameter boolean script,
+                                                   @AncestorInPath AbstractProject<?,?> project) {
 			String labelVal = Util.fixEmptyAndTrim(labelName);
 			String names = Util.fixEmptyAndTrim(value);
 
@@ -160,6 +149,8 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 						"Only label, groovy expression, or resources can be defined, not more than one.");
 			} else {
 				List<String> wrongNames = new ArrayList<>();
+				List<String> varNames = new ArrayList<>();
+                List<String> unknownParams = new ArrayList<>();
 				for (String name : names.split("\\s+")) {
 					boolean found = false;
 					for (LockableResource r : LockableResourcesManager.get()
@@ -169,78 +160,120 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 							break;
 						}
 					}
-					if (!found)
-						wrongNames.add(name);
+					if (!found) {
+                        if (Utils.containsParameter(name)) {
+                            List<String> badParams = Utils.checkParameters(name, project);
+                            if (!badParams.isEmpty()) {
+                                unknownParams.addAll(badParams);
+                            }
+                            varNames.add(name);
+						} else {
+							wrongNames.add(name);
+						}
+					}
 				}
-				if (wrongNames.isEmpty()) {
-					return FormValidation.ok();
-				} else {
-					return FormValidation
-							.error("The following resources do not exist: "
-									+ wrongNames);
-				}
-			}
-		}
+                if (wrongNames.isEmpty() && varNames.isEmpty() && unknownParams.isEmpty()) {
+                    return FormValidation.ok();
+                } else if (!wrongNames.isEmpty()) {
+                    return FormValidation
+                            .error("The following resources do not exist: "
+                                    + wrongNames);
+                } else if (!unknownParams.isEmpty()) {
+                    return FormValidation
+                            .error("The following parameters do not exist: "
+                                    + unknownParams);
+                } else {
+                    return FormValidation
+                            .warning("The following resources cannot be validated as they contain parameter values: "
+                                    + varNames);
+                }
+            }
+        }
 
-		public FormValidation doCheckLabelName(
-				@QueryParameter String value,
-				@QueryParameter String resourceNames,
-				@QueryParameter boolean script) {
-			String label = Util.fixEmptyAndTrim(value);
-			String names = Util.fixEmptyAndTrim(resourceNames);
+        public FormValidation doCheckLabelName(@QueryParameter String value,
+                                               @QueryParameter String resourceNames,
+                                               @QueryParameter boolean script,
+                                               @AncestorInPath AbstractProject<?,?> project) {
 
-			if (label == null) {
-				return FormValidation.ok();
-			} else if (names != null || script) {
-				return FormValidation.error(
-						"Only label, groovy expression, or resources can be defined, not more than one.");
-			} else {
-				if (LockableResourcesManager.get().isValidLabel(label)) {
-					return FormValidation.ok();
-				} else {
-					return FormValidation.error(
-							"The label does not exist: " + label);
-				}
-			}
-		}
+            String label = Util.fixEmptyAndTrim(value);
+            String names = Util.fixEmptyAndTrim(resourceNames);
 
-		public FormValidation doCheckResourceNumber(@QueryParameter String value,
-				@QueryParameter String resourceNames,
-                @QueryParameter String labelName,
-                @QueryParameter String resourceMatchScript)
-        {
+            if (label == null) {
+                return FormValidation.ok();
+            } else if (names != null || script) {
+                return FormValidation.error(
+                        "Only label, groovy expression, or resources can be defined, not more than one.");
+            } else {
+                if (LockableResourcesManager.get().isValidLabel(label)) {
+                    return FormValidation.ok();
+                } else if (Utils.containsParameter(label)) {
+                    List<String> badParams = Utils.checkParameters(label, project);
+                    if (!badParams.isEmpty()) {
+                        return FormValidation
+                                .error("The following parameters do not exist: "
+                                        + badParams);
+                    }
+                    return FormValidation
+                            .warning("The label cannot be validated as it contains a parameter value: "
+                                    + label);
+                } else {
+                    return FormValidation.error(
+                            "The label does not exist: " + label);
+                }
+            }
+        }
 
-			String number = Util.fixEmptyAndTrim(value);
-			String names = Util.fixEmptyAndTrim(resourceNames);
-			String label = Util.fixEmptyAndTrim(labelName);
+        public FormValidation doCheckResourceNumber(@QueryParameter String value,
+                                                    @QueryParameter String resourceNames,
+                                                    @QueryParameter String labelName,
+                                                    @QueryParameter String resourceMatchScript,
+                                                    @AncestorInPath AbstractProject<?,?> project) {
+
+            String number = Util.fixEmptyAndTrim(value);
+            String names = Util.fixEmptyAndTrim(resourceNames);
+            String label = Util.fixEmptyAndTrim(labelName);
             String script = Util.fixEmptyAndTrim(resourceMatchScript);
 
-			if (number == null || number.equals("") || number.trim().equals("0")) {
-				return FormValidation.ok();
-			}
-
-			int numAsInt;
-			try {
-				numAsInt = Integer.parseInt(number);
-			} catch(NumberFormatException e)  {
-				return FormValidation.error(
-					"Could not parse the given value as integer.");
-			}
-			int numResources = 0;
-			if (names != null) {
-				numResources = names.split("\\s+").length;
-            } else if (label != null || script != null) {
-                	numResources = Integer.MAX_VALUE;
+            if (number == null || number.equals("0")) {
+                return FormValidation.ok();
             }
 
-			if (numResources < numAsInt) {
-				return FormValidation.error(String.format(
-					"Given amount %d is greater than amount of resources: %d.",
-					numAsInt,
-					numResources));
-			}
-			return FormValidation.ok();
-		}
+            int numAsInt;
+            try {
+                numAsInt = Integer.parseInt(number);
+            } catch(NumberFormatException e)  {
+                if (Utils.isParameter(number)) {
+                    List<String> badParams = Utils.checkParameters(number, project);
+                    if (!badParams.isEmpty()) {
+                        return FormValidation
+                                .error("The following parameter does not exist: "
+                                        + badParams);
+                    }
+                    return FormValidation
+                            .warning("The value cannot be validated as it is a parameter value: "
+                                    + number);
+                }
+
+                return FormValidation.error(
+                        "Could not parse the given value as integer.");
+            }
+            int numResources = 0;
+            if (names != null) {
+                numResources = names.split("\\s+").length;
+            } else if (label != null) {
+                numResources = LockableResourcesManager.get().getResourcesWithLabel(label, null).size();
+            } else if (script != null) {
+                numResources = Integer.MAX_VALUE;
+            }
+
+            if (numResources < numAsInt) {
+                return FormValidation.error(String.format(
+                        "Given amount %d is greater than amount of resources: %d.",
+                        numAsInt,
+                        numResources));
+            }
+            return FormValidation.ok();
+        }
 
 		public AutoCompletionCandidates doAutoCompleteLabelName(
 				@QueryParameter String value) {
@@ -273,4 +306,3 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 		}
 	}
 }
-

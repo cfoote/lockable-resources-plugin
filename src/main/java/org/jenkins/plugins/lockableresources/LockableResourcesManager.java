@@ -24,7 +24,6 @@ import javax.annotation.Nonnull;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
-import org.apache.commons.lang.StringUtils;
 import org.jenkins.plugins.lockableresources.queue.LockableResourcesCandidatesStruct;
 import org.jenkins.plugins.lockableresources.queue.LockableResourcesStruct;
 import org.jenkins.plugins.lockableresources.queue.QueuedContextStruct;
@@ -36,8 +35,11 @@ import org.kohsuke.stapler.StaplerRequest;
 @Extension
 public class LockableResourcesManager extends GlobalConfiguration {
 
+  /** @deprecated Leftover of queue sorter support (since 1.7) */
   @Deprecated private transient int defaultPriority;
+  /** @deprecated Leftover of queue sorter support (since 1.7) */
   @Deprecated private transient String priorityParameterName;
+
   private List<LockableResource> resources;
 
   /**
@@ -164,7 +166,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
    * @return List of the matching resources
    * @throws ExecutionException Script execution failed for one of the resources. It is considered
    *     as a fatal failure since the requirement list may be incomplete
-   * @since TODO
+   * @since 2.0
    */
   @Nonnull
   public List<LockableResource> getResourcesMatchingScript(
@@ -177,7 +179,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
     return found;
   }
 
-  public LockableResource fromName(String resourceName) {
+  public synchronized LockableResource fromName(String resourceName) {
     if (resourceName != null) {
       for (LockableResource r : resources) {
         if (resourceName.equals(r.getName())) return r;
@@ -232,7 +234,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
    *     still waiting for the resources
    * @throws ExecutionException Cannot queue the resource due to the execution failure. Carries info
    *     in the cause
-   * @since TODO
+   * @since 2.0
    */
   @CheckForNull
   public synchronized List<LockableResource> tryQueue(
@@ -255,7 +257,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
     }
 
     boolean candidatesByScript = false;
-    List<LockableResource> candidates = new ArrayList<>();
+    List<LockableResource> candidates;
     final SecureGroovyScript systemGroovyScript = requiredResources.getResourceMatchScript();
     if (requiredResources.label != null
         && requiredResources.label.isEmpty()
@@ -276,7 +278,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
     // if did not get wanted amount or did not get all
     final int required_amount;
     if (candidatesByScript && candidates.isEmpty()) {
-      /**
+      /*
        * If the groovy script does not return any candidates, it means nothing is needed, even if a
        * higher amount is specified. A valid use case is a Matrix job, when not all configurations
        * need resources.
@@ -411,7 +413,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
       }
     }
 
-        this.unlockNames(resourceNamesToUnLock, build, inversePrecedence);
+    this.unlockNames(resourceNamesToUnLock, build, inversePrecedence);
   }
 
   public synchronized void unlockNames(
@@ -583,7 +585,9 @@ public class LockableResourcesManager extends GlobalConfiguration {
     if (name != null && label != null) {
       LockableResource existent = fromName(name);
       if (existent == null) {
-        getResources().add(new LockableResource(name, "", label, null));
+        LockableResource resource = new LockableResource(name);
+        resource.setLabels(label);
+        getResources().add(resource);
         save();
         return true;
       }
@@ -630,9 +634,10 @@ public class LockableResourcesManager extends GlobalConfiguration {
     if (nextContext == null) {
       LOGGER.log(
           Level.FINER,
-          "No context queued for resources "
-              + StringUtils.join(resourceNamesToUnreserve, ", ")
-              + " so unreserving and proceeding.");
+          () ->
+              "No context queued for resources "
+                  + String.join(", ", resourceNamesToUnreserve)
+                  + " so unreserving and proceeding.");
       unreserveResources(resources);
       return;
     }
@@ -719,8 +724,9 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
   @Override
   public boolean configure(StaplerRequest req, JSONObject json) throws FormException {
-    BulkChange bc = new BulkChange(this);
-    try {
+    try (BulkChange bc = new BulkChange(this)) {
+      // reset resources to default which are not currently locked
+      this.resources.removeIf(resource -> !resource.isLocked());
       req.bindJSON(this, json);
       bc.commit();
     } catch (IOException exception) {
@@ -731,6 +737,16 @@ public class LockableResourcesManager extends GlobalConfiguration {
     return true;
   }
 
+  /** @see #checkResourcesAvailability(List, PrintStream, List, boolean) */
+  public synchronized Set<LockableResource> checkResourcesAvailability(
+      List<LockableResourcesStruct> requiredResourcesList,
+      @Nullable PrintStream logger,
+      @Nullable List<String> lockedResourcesAboutToBeUnlocked) {
+    boolean skipIfLocked = false;
+    return this.checkResourcesAvailability(
+        requiredResourcesList, logger, lockedResourcesAboutToBeUnlocked, skipIfLocked);
+  }
+
   /**
    * Checks if there are enough resources available to satisfy the requirements specified within
    * requiredResources and returns the necessary available resources. If not enough resources are
@@ -739,7 +755,8 @@ public class LockableResourcesManager extends GlobalConfiguration {
   public synchronized Set<LockableResource> checkResourcesAvailability(
       List<LockableResourcesStruct> requiredResourcesList,
       @Nullable PrintStream logger,
-      @Nullable List<String> lockedResourcesAboutToBeUnlocked) {
+      @Nullable List<String> lockedResourcesAboutToBeUnlocked,
+      boolean skipIfLocked) {
 
     List<LockableResourcesCandidatesStruct> requiredResourcesCandidatesList = new ArrayList<>();
 
@@ -830,7 +847,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
       }
 
       if (selected.size() < requiredAmount) {
-        if (logger != null) {
+        if (logger != null && !skipIfLocked) {
           logger.println(
               "Found "
                   + selected.size()

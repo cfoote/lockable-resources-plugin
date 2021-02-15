@@ -5,7 +5,7 @@
 [![Jenkins Plugin Installs](https://img.shields.io/jenkins/plugin/i/lockable-resources.svg?color=blue)](https://plugins.jenkins.io/lockable-resources)
 [![Build Status](https://ci.jenkins.io/buildStatus/icon?job=Plugins%2Flockable-resources-plugin%2Fmaster)](https://ci.jenkins.io/job/Plugins/job/lockable-resources-plugin/job/master/)
 [![GitHub license](https://img.shields.io/github/license/jenkinsci/lockable-resources-plugin.svg)](https://github.com/jenkinsci/lockable-resources-plugin/blob/master/LICENSE.txt)
-[![Maintenance](https://img.shields.io/maintenance/yes/2019.svg)]()
+[![Maintenance](https://img.shields.io/maintenance/yes/2020.svg)](https://github.com/jenkinsci/lockable-resources-plugin)
 
 This plugin allows defining lockable resources (such as printers, phones,
 computers, etc.) that can be used by builds. If a build requires a resource
@@ -39,11 +39,13 @@ Please see the help item for each field for details.
 ### Using a resource in a pipeline job
 
 When the `lock` step is used in a Pipeline, if the resource to be locked isn't
-already defined in the Jenkins global configuration, an ephermal resource is
+already defined in the Jenkins global configuration, an ephemeral resource is
 used: These resources only exist as long as any running build is referencing
 them.
 
 Examples:
+
+*Acquire lock*
 
 ```groovy
 echo 'Starting'
@@ -54,6 +56,8 @@ lock('my-resource-name') {
 echo 'Finish'
 ```
 
+*Take first position in queue*
+
 ```groovy
 lock(resource: 'staging-server', inversePrecedence: true) {
     node {
@@ -63,11 +67,25 @@ lock(resource: 'staging-server', inversePrecedence: true) {
 }
 ```
 
+*Resolve a variable configured with the resource*
+
 ```groovy
 lock(label: 'some_resource', variable: 'LOCKED_RESOURCE') {
   echo env.LOCKED_RESOURCE
 }
 ```
+
+*Skip executing the block if there is a queue*
+
+```groovy
+lock(resource: 'some_resource', skipIfLocked: true) {
+  echo 'Do something now or never!'
+}
+```
+
+Detailed documentation can be found as part of the
+[Pipeline Steps](https://jenkins.io/doc/pipeline/steps/lockable-resources/)
+documentation.
 
 ## Configuration as Code
 
@@ -89,13 +107,12 @@ unclassified:
 ## Changelog
 
 * See [GitHub Releases](https://github.com/jenkinsci/lockable-resources-plugin/releases)
-  for recent versions
-* See the [plugin's Wiki page](https://wiki.jenkins.io/display/JENKINS/Lockable+Resources+Plugin#LockableResourcesPlugin-Changelog)
-  for versions 2.5 and older
+  for recent versions.
+* See the [old changelog](CHANGELOG.old.md) for versions 2.5 and older.
 
 ## Contributing
 
-If you want to contribute to this plugin, you probably will need a Jenkins plugin developement
+If you want to contribute to this plugin, you probably will need a Jenkins plugin development
 environment. This basically means a current version of Java (Java 8 should probably be okay for now)
 and [Apache Maven]. See the [Jenkins Plugin Tutorial] for details.
 
@@ -108,7 +125,7 @@ should create a plugin as `target/*.hpi`, which you can install in your Jenkins 
     $ mvn hpi:run -Djenkins.version=2.164.1
 
 allows you to spin up a test Jenkins instance on [localhost] to test your
-local changes before commiting.
+local changes before committing.
 
 [Apache Maven]: https://maven.apache.org/
 [Jenkins Plugin Tutorial]: https://jenkins.io/doc/developer/tutorial/prepare/

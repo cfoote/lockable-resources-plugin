@@ -56,7 +56,7 @@ public class LockableResourcesStruct implements Serializable {
 
     requiredVar = property.getResourceNamesVar();
 
-    requiredNumber = property.getResourceNumber();
+    requiredNumber = env.expand(property.getResourceNumber());
     if (requiredNumber != null && requiredNumber.equals("0")) requiredNumber = null;
   }
 
@@ -110,7 +110,7 @@ public class LockableResourcesStruct implements Serializable {
    * @see
    *     LockableResource#scriptMatches(org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript,
    *     java.util.Map)
-   * @since TODO
+   * @since 2.1
    */
   @CheckForNull
   public SecureGroovyScript getResourceMatchScript() {

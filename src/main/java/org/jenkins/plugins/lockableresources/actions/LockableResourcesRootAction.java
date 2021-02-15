@@ -15,21 +15,18 @@ import hudson.security.AccessDeniedException2;
 import hudson.security.Permission;
 import hudson.security.PermissionGroup;
 import hudson.security.PermissionScope;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
 import javax.servlet.ServletException;
-
 import jenkins.model.Jenkins;
-
 import org.jenkins.plugins.lockableresources.LockableResource;
 import org.jenkins.plugins.lockableresources.LockableResourcesManager;
 import org.jenkins.plugins.lockableresources.Messages;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
+import org.kohsuke.stapler.interceptor.RequirePOST;
 
 @Extension
 public class LockableResourcesRootAction implements RootAction {
@@ -49,7 +46,7 @@ public class LockableResourcesRootAction implements RootAction {
 			Messages.LockableResourcesRootAction_ViewPermission(),
 			Messages._LockableResourcesRootAction_ViewPermission_Description(), Jenkins.ADMINISTER,
 			PermissionScope.JENKINS);
-	
+
 	public static final String ICON = "/plugin/lockable-resources/img/device-24x24.png";
 
 	public String getIconFileName() {
@@ -65,7 +62,7 @@ public class LockableResourcesRootAction implements RootAction {
 	}
 
 	public String getDisplayName() {
-		return "Lockable Resources";
+	  return Messages.LockableResourcesRootAction_PermissionGroup();
 	}
 
 	public String getUrlName() {
@@ -88,6 +85,7 @@ public class LockableResourcesRootAction implements RootAction {
 		return LockableResourcesManager.get().getAllLabels().size();
 	}
 
+	@RequirePOST
 	public void doUnlock(StaplerRequest req, StaplerResponse rsp)
 			throws IOException, ServletException {
 		Jenkins.getInstance().checkPermission(UNLOCK);
@@ -106,6 +104,7 @@ public class LockableResourcesRootAction implements RootAction {
 		rsp.forwardToPreviousPage(req);
 	}
 
+	@RequirePOST
 	public void doReserve(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
 		Jenkins.getInstance().checkPermission(RESERVE);
@@ -126,6 +125,7 @@ public class LockableResourcesRootAction implements RootAction {
 		rsp.forwardToPreviousPage(req);
 	}
 
+	@RequirePOST
 	public void doUnreserve(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
 		Jenkins.getInstance().checkPermission(RESERVE);
@@ -150,6 +150,7 @@ public class LockableResourcesRootAction implements RootAction {
 		rsp.forwardToPreviousPage(req);
 	}
 
+	@RequirePOST
 	public void doReset(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
 		Jenkins.getInstance().checkPermission(UNLOCK);

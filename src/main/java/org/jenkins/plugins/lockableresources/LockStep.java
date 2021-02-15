@@ -3,20 +3,25 @@ package org.jenkins.plugins.lockableresources;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import hudson.Extension;
 import hudson.model.AutoCompletionCandidates;
+import hudson.model.TaskListener;
 import hudson.util.FormValidation;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
-import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
-import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
+import org.jenkinsci.plugins.workflow.steps.Step;
+import org.jenkinsci.plugins.workflow.steps.StepContext;
+import org.jenkinsci.plugins.workflow.steps.StepDescriptor;
+import org.jenkinsci.plugins.workflow.steps.StepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 
-public class LockStep extends AbstractStepImpl implements Serializable {
+public class LockStep extends Step implements Serializable {
 
-  private static final long serialVersionUID = 1L;
+  private static final long serialVersionUID = -953609907239674360L;
 
   @CheckForNull public String resource = null;
 
@@ -28,6 +33,8 @@ public class LockStep extends AbstractStepImpl implements Serializable {
   @CheckForNull public String variable = null;
 
   public boolean inversePrecedence = false;
+
+  public boolean skipIfLocked = false;
 
   @CheckForNull public List<LockStepResource> extra = null;
 
@@ -44,6 +51,11 @@ public class LockStep extends AbstractStepImpl implements Serializable {
   @DataBoundSetter
   public void setInversePrecedence(boolean inversePrecedence) {
     this.inversePrecedence = inversePrecedence;
+  }
+
+  @DataBoundSetter
+  public void setSkipIfLocked(boolean skipIfLocked) {
+    this.skipIfLocked = skipIfLocked;
   }
 
   @DataBoundSetter
@@ -71,11 +83,7 @@ public class LockStep extends AbstractStepImpl implements Serializable {
   }
 
   @Extension
-  public static final class DescriptorImpl extends AbstractStepDescriptorImpl {
-
-    public DescriptorImpl() {
-      super(LockStepExecution.class);
-    }
+  public static final class DescriptorImpl extends StepDescriptor {
 
     @Override
     public String getFunctionName() {
@@ -105,12 +113,18 @@ public class LockStep extends AbstractStepImpl implements Serializable {
         @QueryParameter String value, @QueryParameter String label) {
       return LockStepResource.DescriptorImpl.doCheckLabel(label, value);
     }
+
+    @Override
+    public Set<Class<?>> getRequiredContext() {
+      return Collections.singleton(TaskListener.class);
+    }
   }
 
+  @Override
   public String toString() {
     if (extra != null && !extra.isEmpty()) {
       return getResources().stream()
-          .map(resource -> "{" + resource.toString() + "}")
+          .map(res -> "{" + res.toString() + "}")
           .collect(Collectors.joining(","));
     } else if (resource != null || label != null) {
       return LockStepResource.toString(resource, label, quantity);
@@ -134,5 +148,10 @@ public class LockStep extends AbstractStepImpl implements Serializable {
       resources.addAll(extra);
     }
     return resources;
+  }
+
+  @Override
+  public StepExecution start(StepContext context) throws Exception {
+    return new LockStepExecution(this, context);
   }
 }
