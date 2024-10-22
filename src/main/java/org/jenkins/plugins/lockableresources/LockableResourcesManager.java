@@ -643,19 +643,20 @@ public class LockableResourcesManager extends GlobalConfiguration {
         removeResources(toBeRemoved);
     }
 
-    public void unlockBuild(@Nullable Run<?, ?> build) {
+    @NonNull
+    public List<String> unlockBuild(@Nullable Run<?, ?> build) {
 
         if (build == null) {
-            return;
+            return Collections.emptyList();
         }
 
-        List<String> resourcesInUse =
-                LockedResourcesBuildAction.findAndInitAction(build).getCurrentUsedResourceNames();
+        List<String> resourcesInUse = new ArrayList<>(
+                LockedResourcesBuildAction.findAndInitAction(build).getCurrentUsedResourceNames());
 
-        if (resourcesInUse.size() == 0) {
-            return;
+        if (!resourcesInUse.isEmpty()) {
+            unlockNames(resourcesInUse, build);
         }
-        unlockNames(resourcesInUse, build);
+        return resourcesInUse;
     }
 
     // ---------------------------------------------------------------------------

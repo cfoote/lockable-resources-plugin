@@ -16,7 +16,7 @@ import org.jvnet.hudson.test.JenkinsRule;
 
 public class NodesMirrorTest {
 
-    private static final Logger LOGGER = Logger.getLogger(NodesMirror.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(NodesMirrorTest.class.getName());
 
     @Rule
     public final JenkinsRule j = new JenkinsRule();
