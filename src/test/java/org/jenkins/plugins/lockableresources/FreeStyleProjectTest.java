@@ -257,6 +257,7 @@ class FreeStyleProjectTest {
         QueueTaskFuture<FreeStyleBuild> fb2q = f2.scheduleBuild2(0);
 
         semaphore.release();
+        j.waitForMessage("released lock on [shared]", fb0);
         j.waitForCompletion(fb0);
         // fb1 or fb2 might run first, it shouldn't matter as long as they both get the resource
         FreeStyleBuild fb1 = fb1q.waitForStart();

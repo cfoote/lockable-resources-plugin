@@ -97,8 +97,13 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
         // Skip unlocking for multiple configuration projects,
         // only the child jobs will actually unlock resources.
         if (build instanceof MatrixBuild) return;
-        LOGGER.info(build.getFullDisplayName());
-        LockableResourcesManager.get().unlockBuild(build);
+
+        List<String> unlocked = LockableResourcesManager.get().unlockBuild(build);
+        if (!unlocked.isEmpty()) {
+            listener.getLogger().printf("%s released lock on %s%n", LOG_PREFIX, unlocked);
+            LOGGER.info(
+                    build.getFullDisplayName() + " released lock on " + unlocked + ", because the build has finished.");
+        }
     }
 
     @Override
@@ -106,7 +111,11 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
         // Skip unlocking for multiple configuration projects,
         // only the child jobs will actually unlock resources.
         if (build instanceof MatrixBuild) return;
-        LOGGER.info(build.getFullDisplayName());
-        LockableResourcesManager.get().unlockBuild(build);
+
+        List<String> unlocked = LockableResourcesManager.get().unlockBuild(build);
+        if (!unlocked.isEmpty()) {
+            LOGGER.warning(build.getFullDisplayName() + " released lock on " + unlocked
+                    + ", because the build has been deleted.");
+        }
     }
 }
