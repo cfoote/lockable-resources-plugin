@@ -649,31 +649,33 @@ public class LockableResourcesManager extends GlobalConfiguration {
         removeResources(toBeRemoved);
     }
 
-    public void unlockBuild(@Nullable Run<?, ?> build) {
+    @NonNull
+    public List<String> unlockBuild(@Nullable Run<?, ?> build) {
 
         if (build == null) {
-            return;
+            return Collections.emptyList();
         }
 
         List<String> resourcesInUse =
                 LockedResourcesBuildAction.findAndInitAction(build).getCurrentUsedResourceNames();
-
-        if (resourcesInUse.size() == 0) {
-            return;
-        }
-        unlockNames(resourcesInUse, build);
+        return unlockNames(resourcesInUse, build);
     }
 
     // ---------------------------------------------------------------------------
-    public void unlockNames(@Nullable List<String> resourceNamesToUnLock, Run<?, ?> build) {
+    @NonNull
+    public List<String> unlockNames(@Nullable List<String> resourceNamesToUnLock, Run<?, ?> build) {
 
         // make sure there is a list of resource names to unlock
         if (resourceNamesToUnLock == null || resourceNamesToUnLock.isEmpty()) {
-            return;
+            return Collections.emptyList();
         }
+
+        List<String> unlockedResourceNames;
         synchronized (this.syncResources) {
+            unlockedResourceNames = new ArrayList<>(resourceNamesToUnLock);
             unlockResources(this.fromNames(resourceNamesToUnLock), build);
         }
+        return unlockedResourceNames;
     }
 
     // ---------------------------------------------------------------------------
